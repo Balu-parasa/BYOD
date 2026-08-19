@@ -1,160 +1,346 @@
-document.addEventListener('DOMContentLoaded', () => {
-    loadDevices();
-
-    const searchInput = document.getElementById('search');
-    searchInput.addEventListener('input', () => {
-        filterDevices(searchInput.value);
-    });
-});
-
-const deviceList = document.getElementById('device-list');
-const registerModal = document.getElementById('register-modal');
-const deviceNameInput = document.getElementById('device-name');
-const ownerNameInput = document.getElementById('owner-name');
-const macAddressInput = document.getElementById('mac-address');
-
-let allDevices = []; // Store all fetched devices for filtering
-
+<<<<<<< HEAD
 function openModal() {
-    registerModal.classList.remove('hidden');
+    document.getElementById("register-modal").classList.remove("hidden");
 }
 
 function closeModal() {
-    registerModal.classList.add('hidden');
-    clearModalInputs();
+    document.getElementById("register-modal").classList.add("hidden");
+    document.getElementById("device-name").value = "";
+    document.getElementById("owner-name").value = "";
+    document.getElementById("mac-address").value = "";
 }
 
-function clearModalInputs() {
-    deviceNameInput.value = '';
-    ownerNameInput.value = '';
-    macAddressInput.value = '';
-}
-
-async function loadDevices() {
+async function updateDashboardDeviceCount() {
     try {
-        const response = await fetch('backend/get_devices.php');
-        const data = await response.json();
-        allDevices = data;
-        renderDevices(data);
+        const response = await fetch("get_device_count.php");
+        const result = await response.json();
+        if (result.success) {
+            const registeredDevicesElement = document.querySelectorAll('#main-content .text-4xl.font-bold')[1];
+            if (registeredDevicesElement) {
+                registeredDevicesElement.innerText = result.count;
+            }
+        } else {
+            console.error("Failed to fetch device count for dashboard:", result.message);
+        }
     } catch (error) {
-        console.error('Error fetching devices:', error);
-        deviceList.innerHTML = '<tr><td colspan="5" class="p-4 text-center">Failed to load devices.</td></tr>';
+        console.error("Error fetching device count for dashboard:", error);
     }
-}
-
-function renderDevices(devices) {
-    deviceList.innerHTML = '';
-    if (devices.length === 0) {
-        deviceList.innerHTML = '<tr><td colspan="5" class="p-4 text-center">No devices found.</td></tr>';
-        return;
-    }
-    devices.forEach(device => {
-        const row = deviceList.insertRow();
-        row.className = "border-b hover:bg-gray-50";
-        row.innerHTML = `
-            <td class="p-2">${device.device_name}<br><small class="text-gray-500">${device.mac_address}</small></td>
-            <td class="p-2">${device.owner_name}</td>
-            <td class="p-2">
-                <span class="status ${device.status}" onclick="updateDeviceStatus(${device.id}, '${device.status === 'active' ? 'inactive' : 'active'}')">
-                    ${device.status.charAt(0).toUpperCase() + device.status.slice(1)}
-                </span>
-            </td>
-            <td class="p-2">${device.last_active}</td>
-            <td class="p-2"><button onclick="deleteDevice(${device.id})" class="text-red-600 hover:underline">Delete</button></td>
-        `;
-    });
-    lucide.createIcons(); // Ensure icons are rendered if you're using them
 }
 
 async function addDevice() {
-    const deviceName = deviceNameInput.value.trim();
-    const ownerName = ownerNameInput.value.trim();
-    const macAddress = macAddressInput.value.trim();
+    const name = document.getElementById("device-name").value.trim();
+    const owner = document.getElementById("owner-name").value.trim();
+    const mac = document.getElementById("mac-address").value.trim();
+    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
 
-    if (!deviceName || !ownerName || !isValidMAC(macAddress)) {
-        alert('Please fill in all fields with a valid MAC address.');
+    if (!name || !owner || !mac) {
+        alert("Please fill in all fields.");
+        return;
+    }
+
+    if (!macRegex.test(mac)) {
+        alert("Invalid MAC address format.");
         return;
     }
 
     try {
-        const response = await fetch('backend/add_device.php', {
-            method: 'POST',
+        const response = await fetch("add_device.php", {
+            method: "POST",
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                "Content-Type": "application/json"
             },
-            body: `device_name=${encodeURIComponent(deviceName)}&owner_name=${encodeURIComponent(ownerName)}&mac_address=${encodeURIComponent(macAddress)}`,
+            body: JSON.stringify({ name, owner, mac })
         });
-        const data = await response.json();
 
-        if (data.success) {
+        const result = await response.json();
+
+        if (result.success) {
+            alert("Device registered successfully!");
             closeModal();
-            loadDevices(); // Reload the device list
+            await renderDevices();
+            logDeviceRegistrationActivity(name, owner);
+            if (window.location.pathname.endsWith('index.html') || window.location.pathname === '/') {
+                await updateDashboardDeviceCount();
+                if (typeof updateRecentActivitiesDisplay === 'function') {
+                    updateRecentActivitiesDisplay();
+                }
+            }
         } else {
-            alert('Error registering device: ' + data.message);
+            alert("Failed to register device: " + (result.message || "Unknown error"));
         }
     } catch (error) {
-        console.error('Error registering device:', error);
-        alert('An unexpected error occurred while registering the device.');
+        console.error("Error while adding device:", error);
+        alert("Error occurred while registering the device.");
     }
 }
 
-async function updateDeviceStatus(deviceId, newStatus) {
-    try {
-        const response = await fetch('backend/update_status.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `device_id=${deviceId}&status=${newStatus}`,
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            loadDevices(); // Reload the device list to update the UI
-        } else {
-            alert('Error updating status: ' + data.message);
-        }
-    } catch (error) {
-        console.error('Error updating status:', error);
-        alert('An unexpected error occurred while updating the status.');
-    }
-}
-
-async function deleteDevice(deviceId) {
-    if (confirm('Are you sure you want to delete this device?')) {
+async function deleteDevice(macAddress) {
+    if (confirm(`Are you sure you want to delete the device with MAC address: ${macAddress}?`)) {
         try {
-            const response = await fetch('backend/delete_device.php', {
-                method: 'POST',
+            const response = await fetch("delete_device.php", { 
+                method: "POST",
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    "Content-Type": "application/json"
                 },
-                body: `device_id=${deviceId}`,
+                body: JSON.stringify({ mac: macAddress })
             });
-            const data = await response.json();
 
-            if (data.success) {
-                loadDevices(); // Reload the device list
+            const result = await response.json();
+
+            if (result.success) {
+                alert("Device deleted successfully!");
+                await renderDevices(); 
+
+                const deletedDevice = document.querySelector(`#device-list tr:has(button[onclick*="'${macAddress}'"]) td:first-child`)?.textContent;
+                if (deletedDevice) {
+                    addRecentActivity(`Device "${deletedDevice.trim()}" deleted`);
+                } else {
+                    addRecentActivity(`Device with MAC address "${macAddress}" deleted`);
+                }
+
+                if (window.location.pathname.endsWith('index.html') || window.location.pathname === '/') {
+                    await updateDashboardDeviceCount();
+                    if (typeof updateDashboardData === 'function') {
+                        updateDashboardData();
+                    }
+                }
             } else {
-                alert('Error deleting device: ' + data.message);
+                alert("Failed to delete device: " + (result.message || "Unknown error"));
             }
         } catch (error) {
-            console.error('Error deleting device:', error);
-            alert('An unexpected error occurred while deleting the device.');
+            console.error("Error while deleting device:", error);
+            alert("Error occurred while deleting the device.");
         }
     }
 }
 
-function filterDevices(searchTerm) {
-    const lowerSearchTerm = searchTerm.toLowerCase();
-    const filteredDevices = allDevices.filter(device =>
-        device.device_name.toLowerCase().includes(lowerSearchTerm) ||
-        device.owner_name.toLowerCase().includes(lowerSearchTerm) ||
-        device.mac_address.toLowerCase().includes(lowerSearchTerm) ||
-        device.status.toLowerCase().includes(lowerSearchTerm)
-    );
-    renderDevices(filteredDevices);
+function logDeviceRegistrationActivity(deviceName, ownerName) {
+    const message = `New device "${deviceName}" registered by ${ownerName}.`;
+    addRecentActivity(message);
 }
 
-function isValidMAC(mac) {
-    return /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac);
+async function toggleStatus(mac, el) {
+    const newStatus = el.classList.contains("active") ? "inactive" : "active";
+    el.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+    el.className = `status ${newStatus}`;
+
+    try {
+        const res = await fetch("update_status.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mac, status: newStatus })
+        });
+
+        const result = await res.json();
+        if (!result.success) {
+            const previousStatus = newStatus === "active" ? "inactive" : "active";
+            el.textContent = previousStatus.charAt(0).toUpperCase() + previousStatus.slice(1);
+            el.className = `status ${previousStatus}`;
+            alert(result.message || "Status update failed.");
+        } else if (window.parent && window.parent.document.getElementById('main-content').querySelector('#device-status-list')) {
+            updateDashboardDeviceStatus(mac, newStatus);
+        }
+    } catch (err) {
+        const previousStatus = newStatus === "active" ? "inactive" : "active";
+        el.textContent = previousStatus.charAt(0).toUpperCase() + previousStatus.slice(1);
+        el.className = `status ${previousStatus}`;
+        console.error("Status toggle failed:", err);
+    }
 }
+
+
+async function renderDevices() {
+    try {
+        const searchQuery = document.getElementById("search").value.toLowerCase();
+        const response = await fetch("get_device_statuses.php");
+        const result = await response.json();
+        const deviceList = document.getElementById("device-list");
+
+        if (result.success && deviceList) {
+            deviceList.innerHTML = "";
+            result.devices
+                .filter(device =>
+                    device.device_name.toLowerCase().includes(searchQuery) ||
+                    device.owner_name.toLowerCase().includes(searchQuery) ||
+                    device.mac_address.toLowerCase().includes(searchQuery)
+                )
+                .forEach(device => {
+                    const row = document.createElement("tr");
+                    row.className = "border-b";
+                    row.innerHTML = `
+                        <td class="p-3">
+                            <p class="font-semibold text-black">${device.device_name}</p>
+                            <p class="text-gray-500 text-xs">${device.mac_address}</p>
+                        </td>
+                        <td class="p-3">${device.owner_name}</td>
+                        <td class="p-3">
+                            <span class="status ${device.status}" onclick="toggleStatus('${device.mac_address}', this)">
+                                ${device.status.charAt(0).toUpperCase() + device.status.slice(1)}
+                            </span>
+                        </td>
+                        <td class="p-3">${device.last_active || "N/A"}</td>
+                        <td class="p-3">
+                            <button onclick="deleteDevice('${device.mac_address}')" class="text-red-600 hover:underline">Delete</button>
+                        </td>
+                    `;
+                    deviceList.appendChild(row);
+                });
+        } else {
+            deviceList.innerHTML = '<tr><td colspan="5" class="p-2 text-gray-500">No devices found.</td></tr>';
+        }
+    } catch (error) {
+        console.error("Error rendering devices:", error);
+        document.getElementById("device-list").innerHTML = '<tr><td colspan="5" class="p-2 text-gray-500">Error loading devices.</td></tr>';
+    }
+}
+
+
+function updateDashboardDeviceStatus(mac, status) {
+    const deviceDiv = document.querySelector(`#device-status-list [data-mac="${mac}"]`);
+    if (deviceDiv) {
+        const statusSpan = deviceDiv.querySelector("span");
+        statusSpan.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        statusSpan.className = `text-xs font-semibold inline-flex items-center px-3 py-1 rounded-full ${status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`;
+    }
+}
+=======
+function openModal() {
+    document.getElementById("register-modal").classList.remove("hidden");
+}
+
+function closeModal() {
+    document.getElementById("register-modal").classList.add("hidden");
+    document.getElementById("device-name").value = "";
+    document.getElementById("owner-name").value = "";
+    document.getElementById("mac-address").value = "";
+}
+
+
+async function addDevice() {
+    const name = document.getElementById("device-name").value.trim();
+    const owner = document.getElementById("owner-name").value.trim();
+    const mac = document.getElementById("mac-address").value.trim();
+    const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+
+    if (!name || !owner || !mac) {
+        alert("Please fill in all fields.");
+        return;
+    }
+
+    if (!macRegex.test(mac)) {
+        alert("Invalid MAC address format.");
+        return;
+    }
+
+    try {
+        const response = await fetch("add_device.php", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ name, owner, mac })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert("Device registered successfully!");
+            closeModal();
+            await renderDevices();  // ✅ Refresh table from backend after adding
+        } else {
+            alert("Failed to register device: " + (result.message || "Unknown error"));
+        }
+    } catch (error) {
+        console.error("Error while adding device:", error);
+        alert("Error occurred while registering the device.");
+    }
+}
+
+
+
+
+async function toggleStatus(mac, el) {
+    const newStatus = el.classList.contains("active") ? "inactive" : "active";
+    try {
+        const res = await fetch("update_status.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mac, status: newStatus })
+        });
+
+        const result = await res.json();
+        if (result.success) {
+            renderDevices();
+        } else {
+            alert(result.message || "Status update failed.");
+        }
+    } catch (err) {
+        console.error("Status toggle failed:", err);
+    }
+}
+
+
+async function deleteDevice(mac) {
+    if (!confirm("Are you sure you want to delete this device?")) return;
+
+    try {
+        const res = await fetch("delete_device.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mac })
+        });
+
+        const result = await res.json();
+        if (result.success) {
+            renderDevices();
+        } else {
+            alert(result.message || "Delete failed.");
+        }
+    } catch (err) {
+        console.error("Delete device failed:", err);
+    }
+}
+
+
+async function renderDevices() {
+    const list = document.getElementById("device-list");
+    const searchTerm = document.getElementById("search").value.toLowerCase();
+    list.innerHTML = "";
+
+    try {
+        const res = await fetch("get_devices.php");
+        const devices = await res.json();
+
+        devices
+            .filter(device =>
+                device.device_name.toLowerCase().includes(searchTerm) ||
+                device.owner_name.toLowerCase().includes(searchTerm) ||
+                device.mac_address.toLowerCase().includes(searchTerm)
+            )
+            .forEach(device => {
+                const row = document.createElement("tr");
+                row.className = "border-b hover:bg-gray-50";
+
+                row.innerHTML = `
+                    <td class="p-2">${device.device_name}<br><small class="text-gray-500">${device.mac_address}</small></td>
+                    <td class="p-2">${device.owner_name}</td>
+                    <td class="p-2"><span class="status ${device.status}" onclick="toggleStatus('${device.mac_address}', this)">${device.status.charAt(0).toUpperCase() + device.status.slice(1)}</span></td>
+                    <td class="p-2">${device.last_active}</td>
+                    <td class="p-2"><button onclick="deleteDevice('${device.mac_address}')" class="text-red-600 hover:underline">Delete</button></td>
+                `;
+                list.appendChild(row);
+            });
+    } catch (err) {
+        console.error("Failed to load devices:", err);
+    }
+}
+
+
+// Initialize the page when it loads
+document.addEventListener("DOMContentLoaded", function() {
+    document.addEventListener("input", (e) => {
+        if (e.target.id === "search") renderDevices();
+    });
+    renderDevices();
+});
+>>>>>>> ce7708e3aea7bf4ad8e2f9a8a73612b8478d9a94
