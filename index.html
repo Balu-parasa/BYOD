@@ -133,6 +133,22 @@
         });
     </script> -->
 
+     <script>
+        function loadPage(page, clickedElement) {
+            fetch(page)
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById("main-content").innerHTML = data;
+            })
+            .catch(error => console.error("Error loading content:", error));
+    
+            // Remove active styles from all links
+            document.querySelectorAll(".nav-link").forEach(el => el.classList.remove("bg-blue-100", "text-blue-700", "font-semibold", "pointer-events-none"));
+    
+            // Apply styles to the clicked item and disable further clicks
+            clickedElement.classList.add("bg-blue-100", "text-blue-700", "font-semibold", "pointer-events-none");
+        }
+    </script>
    
 
 </body>
